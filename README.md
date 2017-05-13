@@ -1,4 +1,5 @@
-"# machinelearning" 
-"# -Web-crawler" 
-"# Web-Crawler--IR" 
-"# Web-Crawler--IR" 
+Install：
+1.python 3
+2.beautiful soup
+
+Run spider.py
