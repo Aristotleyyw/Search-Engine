@@ -1,0 +1,406 @@
+
+#encoding: UTF-8
+import urllib
+import urllib.request
+from urllib import parse
+import json
+from bs4 import BeautifulSoup
+from urllib import robotparser
+from sklearn.feature_extraction.text import TfidfVectorizer
+import pandas as pd
+import stemming
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics import jaccard_similarity_score
+import operator
+import re
+
+
+import numpy as np
+class crawler:
+    def __init__(self, url, pagelimit):
+        self.visited=set()
+        self.titles=set()
+        self.tovisit=set()
+        self.docnum=0
+        self.file=[]
+        self.stemfiles=[]
+        self.stopword = ['this', 'it', 'are', 'you', 'your','is', 'for', 'to', 'on','in','are','and', 'the','us',
+                         'which', 'a', 'be', 'I', 'of', 'in', 'at', 'there', 'if', 'there', 'i', 's','that','am',
+                         'not', 'here']
+        #self.score=[]
+        self.titles= {}
+        self.queryterms=[]
+        self.pagelimit=pagelimit
+        self.URL=[]
+        self.simiDict = []
+        self.tit={}
+        self.urll={}
+
+    def jaccard_similarity(self, query, document):
+        intersection = set(query).intersection(set(document))
+        union = set(query).union(set(document))
+        return len(intersection) / len(union)
+
+    def fetch(self,url):
+        pagelimit=self.pagelimit
+        i=0
+        self.tovisit.add(url)
+        #print(self.tovisit)
+        while self.tovisit and i<pagelimit:
+            parseurl=self.tovisit.pop()
+            if parseurl not in self.visited:
+                if self.robotcheck(parseurl):
+                   if self.urltypecheck(parseurl):
+                        i=i+1
+                        print(i)
+
+                        print('start parse:' + parseurl)
+                        self.parse(parseurl)
+                        self.visited.add(parseurl)
+                   else:
+                       print('not txt file!')
+                else:
+                    print("forbiddenURL"+parseurl)
+
+    def urltypecheck(self, url):
+        parser = parse.urlparse(url)
+        if '.txt' or '.html' in parser.path:
+            #print('PATH:!!'+parser.path)
+            return True
+        elif '.gif' or '.jpg' or '.pdf' in parser.path:
+            return True
+
+    def robotcheck(self,url):
+        parser = parse.urlparse(url)
+
+        if '/dontgohere/' in parser.path :
+            return False
+        else:
+            return True
+
+    def urlformulization(self,urlperfix,url):
+        parser=parse.urlparse(url)
+        if parser.scheme == 'http' or 'https':
+            if parser.netloc == 'lyle.smu.edu':
+                print('form:'+url)
+                return url
+            else:
+                print('out link')
+        if parser.scheme =='':
+            print('formuliaze:'+parse.urljoin(urlperfix, url))
+            return parse.urljoin(urlperfix, url)
+        else:
+            return ''
+
+    def parse(self,url):
+        req = urllib.request.Request(url)
+        try:
+            urlop = urllib.request.urlopen(req)
+            print(url)
+        except urllib.error.HTTPError:
+            #self.brokenUrl.add(url)
+            print(url+" :HTTPError")
+            return 0
+        except urllib.error.URLError:
+            #self.brokenUrl.add(url)
+            print(url+": URLError")
+            return 0
+
+        content=urlop.read()
+        #content = urllib.request.urlopen(url).read()
+        soup = BeautifulSoup(content,'lxml')
+
+        for a in soup.find_all('a'):
+            # print(a)
+            link=a.get('href')
+            newurl= self.urlformulization(url, link)
+            if newurl != '':
+                if link not in self.visited:
+                    self.tovisit.add(newurl)
+
+        fileType = urlop.getheader('Content-Type')
+        print(fileType)
+        if 'text'  in fileType:
+            #self.titles.append(soup.title.string)
+            # text file include txt, htm, html
+            text=soup.body.get_text()
+            x=np.arange(self.docnum)
+            for a in x:
+                filename = "doc" + str(a+1) + ".txt"
+                with open(filename, encoding='utf-8') as h:
+                    text2=h.read()
+                    s=self.jaccard_similarity(text,text2)
+                    #print(s)
+                    #j=jaccard_similarity_score(text,text2)
+                    if s>0.9:
+                        print('dupcate centent,Jaccard score:'+str(s))
+                        return 0
+
+            self.docnum = self.docnum + 1
+            self.file.append(text)
+            filename = "doc" + str(self.docnum)+ ".txt"
+            with open(filename, 'w', encoding= 'utf-8') as f:
+                f.write(text)
+                #elf.files.append(f)
+
+            self.stem(filename)
+            stemfilename = "stemdoc" + str(self.docnum) + ".txt"
+            with open(stemfilename, encoding='utf-8') as k:
+                text = k.read()
+                self.stemfiles.append(text)
+                self.URL.append(url)
+                self.urll[self.docnum]=url
+            if 'html' in fileType:
+                title=soup.title.string
+                self.titles[title]=self.docnum
+                self.tit[self.docnum]=title
+
+            #self.bagofwords(stemfilename)
+            #with open(stemfilename, encoding= 'utf-8') as f:
+                #self.stemfiles.append(f.read())
+            #self.file.append(filename)
+        else:
+            print('No text')
+
+    def bagofwords(self,filename):
+
+        count_vect = CountVectorizer()
+        with open(filename,encoding= 'utf-8') as f:
+            bag_words = count_vect.fit_transform(f)
+        print(bag_words.shape)  # this is a sparse matrix
+        print('=========')
+        print(bag_words)
+        print(len(count_vect.vocabulary_))
+        print(count_vect.vocabulary_)
+
+    def allfiletfidf(self):
+        count_vect = CountVectorizer(stop_words=self.stopword)
+        #print('=========')
+        bag_words = count_vect.fit_transform(self.stemfiles)
+        print('vocaulary len:'+str(len(count_vect.vocabulary_)))
+        print(count_vect.vocabulary_)
+        tfidf_vect = TfidfVectorizer(stop_words=self.stopword)
+        tfidf_mat = tfidf_vect.fit_transform(self.stemfiles)
+
+        df = pd.DataFrame(data=tfidf_mat.toarray(), columns=tfidf_vect.get_feature_names())
+        print('=========')
+        df=df.T
+        print('tf-idf matrix')
+        print(df)
+        #print('=========')
+        score=[]
+        print('=========')
+        x = np.arange(self.docnum )
+        for a in x:
+            df[a]=df[self.docnum].T*df[a]
+            sum=df[a].sum()
+            score.append(sum)
+            print(sum)
+        for word in self.queryterms:
+            for key in self.titles.keys():
+                if word in key:
+                    num=self.titles.get(key)
+                    score[num-1]=score[num-1]+0.5
+        print(score)
+        tuples=[]
+        for a in x:
+            if score[a] !=0:
+                tup=(a+1,score[a])
+                tuples.append(tup)
+
+
+        sortedScore = sorted(tuples, key = operator.itemgetter(1))
+        length=len(sortedScore)
+
+        if length >6:
+            top6=sortedScore[length-6:length]
+            top6=top6[::-1]
+            print('scores in order:')
+            #print(sortedScore)
+            print(top6)
+            ss=0
+            for t in top6:#t(docnum,score)
+                ss=ss+1
+                print('\n')
+                print('Rank No.'+str(ss)+" page:")
+                indexx=t[0]
+                stemfilename = "stemdoc" + str(indexx) + ".txt"
+                with open(stemfilename, encoding='utf-8') as f:
+                    words=f.read()
+                    word20=words.split()[0:20]
+                    print("DOCUMENT:"+str(indexx))
+                    print("URL:")
+                    print(self.urll.get(indexx))
+                    print('TITLE:'+str(self.tit.get(indexx)))
+                    print("first 20 words:")
+                    print(word20)
+        elif 3 <length and length <=6:
+             top= sortedScore
+             top= top[::-1]
+             print(top)
+
+             for t in top:  # t(docnum,score)
+                 indexx = t[0]
+                 stemfilename = "stemdoc" + str(indexx ) + ".txt"
+                 with open(stemfilename, encoding='utf-8') as f:
+                     words = f.read()
+                     word20 = words.split()[0:20]
+                     print("DOCUMENT:" + str(indexx))
+                     print("URL:")
+                     print(self.urll.get(indexx ))
+                     print('TITLE:' + str(self.tit.get(indexx )))
+                     print("first 20 words:")
+                     print(word20)
+        else:
+            print('Related files! less than 3')
+            top = sortedScore
+            top = top[::-1]
+            print(top)
+
+            for t in top:  # t(docnum,score)
+                indexx = t[0]
+                stemfilename = "stemdoc" + str(indexx) + ".txt"
+                with open(stemfilename, encoding='utf-8') as f:
+                    words = f.read()
+                    word20 = words.split()[0:20]
+                    print("DOCUMENT:" + str(indexx))
+                    print("URL:")
+                    print(self.urll.get(indexx))
+                    print('TITLE:' + str(self.tit.get(indexx)))
+                    print("first 20 words:")
+                    print(word20)
+            return 3
+
+    # def ifnewquerry(self,score):
+    #     x = np.arange(self.docnum)
+    #     n=0
+    #     for a in x:
+    #         if score[1]!=0:
+    #             n=n+1
+    #
+    #     print(score)
+    #     print(self.docnum)
+    #     if n<3:
+    #         return True
+    #     else:
+    #         return False
+
+        #print(df)
+        #print(df.sum().sort_values()[-4:0])
+
+
+
+    def stem(self,filename):
+        '''implement stemming algorithm'''
+        stemfilename = "stemdoc" + str(self.docnum) + ".txt"
+        #stemfilename=filename
+        #self.stemfiles.append(stemfilename)
+        stemmer = stemming.PorterStemmer()
+
+        with open(filename,encoding= 'utf-8') as f:
+            while 1:
+                output = ''
+                word = ''
+                line = f.readline()
+                if line == '':
+                    break
+                for c in line:
+                    c = c.rstrip(',.:-=+}])<>;!?/@~-')
+                    c = c.lstrip(',.:-=+{[(<>!?/@~-;')
+                    x=c.split('/')
+                    for xx in x:
+                        if xx.isalpha():
+                            word += xx.lower()
+                        else:
+                            if word:
+                                output += stemmer.stem(word, 0, len(word) - 1)
+                                word = ''
+                            output += xx.lower()
+                with open(stemfilename,'a',encoding= 'utf-8') as o:
+                        o.write(output)
+
+            #return stemfilename
+
+    def querySplit(self, query):
+        '''split query into seperate terms and stemming'''
+        queryTerms = []
+        self.queryterms=queryTerms
+        query = query.lower()
+        terms = query.split()
+        # stemming
+        stemmer = stemming.PorterStemmer()
+        for word in terms:
+            queryTerms.append(stemmer.stem(word, 0, len(word) - 1))
+
+        return queryTerms
+
+    def query(self):
+        print('input')
+        self.similarWord()
+        while 1:
+            q=input("please input your query(typing 'stop' to end)>>>>>>>>> ")
+            q=q.strip()
+            if q == 'stop':
+                break
+            stemquery=self.querySplit(q)
+            self.stemfiles.append(str(stemquery))
+            top=self.allfiletfidf()
+            self.stemfiles.remove(str(stemquery))
+
+            if top == 3:
+                newqu = self.expansion(self.queryterms)
+                self.stemfiles.append(newqu)
+                print('New query')
+                self.allfiletfidf()
+                self.stemfiles.remove(newqu)
+
+
+
+
+
+    def similarWord(self):
+        '''read tresaurus file'''
+        stemmer = stemming.PorterStemmer()
+        mark = re.compile('\w+')
+        with open('expansion.txt', encoding='utf-8') as f:
+            for line in f.readlines():
+                words = mark.findall(line)
+                if len(words) != 0:
+                    # stemming
+                    w = []
+                    for word in words:
+                        w.append(stemmer.stem(word, 0, len(word) - 1))
+                        #print(w)
+                    self.simiDict.append(w)
+
+    def expansion(self, queryTerm):
+        '''extend the query base on the tresaurus'''
+        print(queryTerm)
+        newQuery = []
+        for term in queryTerm:
+            for item in self.simiDict:
+                if term in item:
+                    for t in item:
+                        newQuery.append(t)
+                    break
+
+        newQuery = str(newQuery)
+        print("new query:")
+        print(newQuery)
+        return newQuery
+
+c = crawler('http://lyle.smu.edu/~fmoore/',50)
+c.fetch('http://lyle.smu.edu/~fmoore/')
+c.query()
+#c.allfiletfidf()
+#print(c.robotcheck('http://lyle.smu.edu/~fmoore/dontgohere/badfile2v.html'))
+
+
+
+
+
+
+
+
+
+
