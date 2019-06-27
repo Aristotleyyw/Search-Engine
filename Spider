@@ -72,7 +72,6 @@ class crawler:
 
     def robotcheck(self,url):
         parser = parse.urlparse(url)
-
         if '/dontgohere/' in parser.path :
             return False
         else:
@@ -271,25 +270,6 @@ class crawler:
                     print(word20)
             return 3
 
-    # def ifnewquerry(self,score):
-    #     x = np.arange(self.docnum)
-    #     n=0
-    #     for a in x:
-    #         if score[1]!=0:
-    #             n=n+1
-    #
-    #     print(score)
-    #     print(self.docnum)
-    #     if n<3:
-    #         return True
-    #     else:
-    #         return False
-
-        #print(df)
-        #print(df.sum().sort_values()[-4:0])
-
-
-
     def stem(self,filename):
         '''implement stemming algorithm'''
         stemfilename = "stemdoc" + str(self.docnum) + ".txt"
@@ -353,10 +333,6 @@ class crawler:
                 print('New query')
                 self.allfiletfidf()
                 self.stemfiles.remove(newqu)
-
-
-
-
 
     def similarWord(self):
         '''read tresaurus file'''
